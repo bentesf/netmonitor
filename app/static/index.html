@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetMonitor - Monitoramento & Segurança de VLANs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' },
+                        darkbg: '#0f172a',
+                        cardbg: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkbg text-slate-100 min-h-screen font-sans">
+    <!-- Header Navbar -->
+    <nav class="bg-cardbg border-b border-slate-700 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <i class="fa-solid fa-network-wired text-brand-500 text-2xl"></i>
+            <div>
+                <h1 class="text-xl font-bold text-white tracking-wide">NetMonitor Pro</h1>
+                <p class="text-xs text-slate-400">Plataforma de Visibilidade de Rede & Segurança Inter-VLAN</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span class="w-2 h-2 mr-2 bg-emerald-400 rounded-full animate-ping"></span> SNMP Intelbras (172.128.100.8) Ativo
+            </span>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <i class="fa-solid fa-server mr-1.5"></i> Syslog UDP :5140
+            </span>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+        <!-- Metric Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="bg-cardbg border border-slate-700/60 rounded-xl p-5 shadow-lg flex items-center space-x-4">
+                <div class="p-3 bg-brand-500/10 text-brand-500 rounded-lg"><i class="fa-solid fa-laptop text-2xl"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase">Dispositivos Conectados</p>
+                    <h3 id="total-devices" class="text-2xl font-bold text-white mt-1">0</h3>
+                </div>
+            </div>
+            <div class="bg-cardbg border border-slate-700/60 rounded-xl p-5 shadow-lg flex items-center space-x-4">
+                <div class="p-3 bg-purple-500/10 text-purple-400 rounded-lg"><i class="fa-solid fa-diagram-project text-2xl"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase">Comunidades / VLANs</p>
+                    <h3 id="total-vlans" class="text-2xl font-bold text-white mt-1">0</h3>
+                </div>
+            </div>
+            <div class="bg-cardbg border border-slate-700/60 rounded-xl p-5 shadow-lg flex items-center space-x-4">
+                <div class="p-3 bg-rose-500/10 text-rose-400 rounded-lg"><i class="fa-solid fa-shield-halved text-2xl"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase">Alertas Inter-VLAN</p>
+                    <h3 id="total-alerts" class="text-2xl font-bold text-white mt-1">0</h3>
+                </div>
+            </div>
+            <div class="bg-cardbg border border-slate-700/60 rounded-xl p-5 shadow-lg flex items-center space-x-4">
+                <div class="p-3 bg-amber-500/10 text-amber-400 rounded-lg"><i class="fa-solid fa-microchip text-2xl"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-400 uppercase">Switch Gerenciador</p>
+                    <h3 class="text-base font-semibold text-emerald-400 mt-1">Intelbras (172.128.100.8)</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Section: Alerts Feed & OS Chart -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Security Alerts Feed -->
+            <div class="lg:col-span-2 bg-cardbg border border-slate-700/60 rounded-xl p-6 shadow-lg">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-bell text-rose-500 animate-pulse"></i> Feed de Violações Inter-VLAN em Tempo Real
+                    </h2>
+                    <span class="text-xs text-slate-400">Últimos alertas</span>
+                </div>
+                <div id="alerts-container" class="space-y-3 max-h-72 overflow-y-auto pr-2">
+                    <!-- Alerts loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- OS Distribution Chart -->
+            <div class="bg-cardbg border border-slate-700/60 rounded-xl p-6 shadow-lg flex flex-col items-center">
+                <h2 class="text-lg font-bold text-white mb-4 w-full text-left">Sistemas Operacionais</h2>
+                <div class="w-64 h-64">
+                    <canvas id="osChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connected Devices Table -->
+        <div class="bg-cardbg border border-slate-700/60 rounded-xl p-6 shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Inventário de Dispositivos Conectados</h2>
+                    <p class="text-xs text-slate-400">Filtragem por Comunidade / VLAN e busca por IP, MAC ou Hostname</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    <!-- COMBOBOX / SELETOR DE COMUNIDADE (VLAN) -->
+                    <div class="flex items-center space-x-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5">
+                        <i class="fa-solid fa-layer-group text-purple-400 text-xs"></i>
+                        <label for="community-select" class="text-xs text-slate-400 font-medium whitespace-nowrap">Comunidade / VLAN:</label>
+                        <select id="community-select" onchange="filterTable()" 
+                                class="bg-slate-900 text-xs text-white focus:outline-none focus:border-brand-500 cursor-pointer font-semibold">
+                            <option value="all">Todas as Comunidades</option>
+                        </select>
+                    </div>
+
+                    <!-- BUSCA POR TEXTO -->
+                    <input type="text" id="search-input" onkeyup="filterTable()" placeholder="Buscar IP, MAC, Host..." 
+                           class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 w-48">
+                    
+                    <button onclick="loadData()" class="bg-slate-700 hover:bg-slate-600 text-xs px-3 py-2 rounded-lg font-semibold transition">
+                        <i class="fa-solid fa-rotate-right mr-1"></i> Atualizar
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse" id="devices-table">
+                    <thead>
+                        <tr class="border-b border-slate-700 text-xs text-slate-400 uppercase tracking-wider bg-slate-900/50">
+                            <th class="py-3 px-4">Endereço MAC</th>
+                            <th class="py-3 px-4">Endereço IP</th>
+                            <th class="py-3 px-4">Nome do Host</th>
+                            <th class="py-3 px-4">Comunidade / VLAN</th>
+                            <th class="py-3 px-4">Fabricante</th>
+                            <th class="py-3 px-4">Sistema Operacional</th>
+                            <th class="py-3 px-4">Status</th>
+                            <th class="py-3 px-4 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="devices-table-body" class="divide-y divide-slate-700/40 text-sm">
+                        <!-- Devices populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- DEVICE DETAILS MODAL (ALL COLLECTED FIELDS) -->
+    <div id="device-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-cardbg border border-slate-700 rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-6 relative max-h-[90vh] overflow-y-auto">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white transition text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            
+            <div class="flex items-center space-x-3 border-b border-slate-700/80 pb-4">
+                <div class="p-3 bg-brand-500/10 text-brand-400 rounded-lg">
+                    <i class="fa-solid fa-desktop text-2xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-white">Ficha Técnica Completa do Dispositivo</h3>
+                    <p id="modal-mac-subtitle" class="text-xs font-mono text-brand-400">00:00:00:00:00:00</p>
+                </div>
+            </div>
+
+            <!-- Grid with ALL collected fields -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Endereço MAC</p>
+                    <p id="modal-mac" class="font-mono font-semibold text-brand-400 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Endereço IP</p>
+                    <p id="modal-ip" class="font-mono font-semibold text-slate-200 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Nome do Host (Hostname)</p>
+                    <p id="modal-hostname" class="font-mono text-emerald-400 font-semibold mt-0.5">-</p>
+                </div>
+
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Fabricante do Hardware (OUI)</p>
+                    <p id="modal-mac-vendor" class="font-medium text-slate-200 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Tipo / Categoria do Dispositivo</p>
+                    <p id="modal-device-type" class="font-medium text-amber-400 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Comunidade / VLAN ID</p>
+                    <p id="modal-vlan" class="font-semibold text-purple-400 mt-0.5">-</p>
+                </div>
+
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Porta no Switch</p>
+                    <p id="modal-port" class="font-mono text-slate-300 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">IP do Switch Gerenciador</p>
+                    <p id="modal-switch" class="font-mono text-slate-300 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Sistema Operacional</p>
+                    <p id="modal-os" class="font-medium text-emerald-400 mt-0.5">-</p>
+                </div>
+
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Vendor Class (Option 60)</p>
+                    <p id="modal-vendor" class="text-xs text-slate-300 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Primeira Vez Visto</p>
+                    <p id="modal-first-seen" class="text-xs font-mono text-slate-400 mt-0.5">-</p>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-700/40">
+                    <p class="text-xs text-slate-400">Última Visto</p>
+                    <p id="modal-last-seen" class="text-xs font-mono text-slate-400 mt-0.5">-</p>
+                </div>
+            </div>
+
+            <!-- Device Security Alerts -->
+            <div>
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Histórico de Eventos & Alertas de Segurança Inter-VLAN</h4>
+                <div id="modal-alerts-list" class="space-y-2 max-h-36 overflow-y-auto pr-1">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <div class="flex justify-end pt-2">
+                <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-xs px-4 py-2 rounded-lg font-semibold transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let osChart = null;
+        let allDevices = [];
+
+        async function loadData() {
+            // Load stats
+            const statsRes = await fetch('/api/stats');
+            const stats = await statsRes.json();
+            document.getElementById('total-devices').innerText = stats.total_devices;
+            document.getElementById('total-vlans').innerText = Object.keys(stats.vlans).length;
+            document.getElementById('total-alerts').innerText = stats.total_alerts;
+
+            renderOSChart(stats.os_distribution);
+
+            // Load devices
+            const devRes = await fetch('/api/devices');
+            allDevices = await devRes.json();
+            
+            populateCommunitySelect(allDevices);
+            filterTable();
+
+            // Load alerts
+            const alertRes = await fetch('/api/alerts');
+            const alerts = await alertRes.json();
+            const alertsDiv = document.getElementById('alerts-container');
+            alertsDiv.innerHTML = '';
+
+            if(alerts.length === 0) {
+                alertsDiv.innerHTML = `<p class="text-slate-500 text-sm py-4">Nenhuma violação de VLAN registrada no momento.</p>`;
+            } else {
+                alerts.forEach(a => {
+                    alertsDiv.innerHTML += `
+                        <div class="bg-rose-950/30 border border-rose-600/40 rounded-lg p-3 flex justify-between items-center">
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase">VIOLAÇÃO INTER-VLAN</span>
+                                    <span class="text-xs text-rose-300 font-mono font-semibold">${a.src_ip} (VLAN ${a.src_vlan}) → VLAN ${a.dst_vlan} (${a.dst_ip})</span>
+                                </div>
+                                <p class="text-xs text-slate-300 mt-1">${a.message} | MAC: <span class="font-mono text-amber-400">${a.mac}</span></p>
+                            </div>
+                            <span class="text-[11px] text-slate-400 font-mono">${a.timestamp}</span>
+                        </div>
+                    `;
+                });
+            }
+        }
+
+        function populateCommunitySelect(devices) {
+            const select = document.getElementById('community-select');
+            const currentSelected = select.value;
+            
+            // Map unique VLANs / Communities and count devices per community
+            const communityCounts = {};
+            devices.forEach(d => {
+                const vlanKey = d.vlan ? `Comunidade VLAN ${d.vlan}` : 'Sem Comunidade';
+                communityCounts[vlanKey] = (communityCounts[vlanKey] || 0) + 1;
+            });
+
+            select.innerHTML = `<option value="all">Todas as Comunidades (${devices.length})</option>`;
+            
+            Object.keys(communityCounts).sort().forEach(comm => {
+                select.innerHTML += `<option value="${comm}">${comm} (${communityCounts[comm]})</option>`;
+            });
+
+            if (currentSelected && select.querySelector(`option[value="${currentSelected}"]`)) {
+                select.value = currentSelected;
+            }
+        }
+
+        function renderTable(devices) {
+            const tbody = document.getElementById('devices-table-body');
+            tbody.innerHTML = '';
+            
+            if(devices.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-500">Nenhum dispositivo encontrado para os filtros selecionados.</td></tr>`;
+            } else {
+                devices.forEach(d => {
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-700/30 transition">
+                            <td class="py-3 px-4 font-mono text-brand-400 font-semibold">${d.mac}</td>
+                            <td class="py-3 px-4 font-mono">${d.ip || 'Pending'}</td>
+                            <td class="py-3 px-4 font-mono text-xs text-emerald-400 font-semibold">${d.hostname || 'N/A'}</td>
+                            <td class="py-3 px-4">
+                                <span class="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-0.5 rounded-full text-xs font-semibold">Comunidade VLAN ${d.vlan}</span>
+                            </td>
+                            <td class="py-3 px-4 text-xs text-slate-300">${d.mac_vendor || 'Desconhecido'}</td>
+                            <td class="py-3 px-4 font-medium">${d.os_name}</td>
+                            <td class="py-3 px-4">
+                                <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full text-xs">Online</span>
+                            </td>
+                            <td class="py-3 px-4 text-center">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <button onclick="viewDevice('${d.mac}')" title="Visualizar Detalhes" class="p-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 rounded-lg transition">
+                                        <i class="fa-solid fa-eye"></i>
+                                    </button>
+                                    <button onclick="deleteDevice('${d.mac}')" title="Remover Dispositivo" class="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+        }
+
+        function filterTable() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const selectedCommunity = document.getElementById('community-select').value;
+
+            const filtered = allDevices.filter(d => {
+                // Filter by Community / VLAN Combo Box
+                const deviceCommunity = d.vlan ? `Comunidade VLAN ${d.vlan}` : 'Sem Comunidade';
+                const matchesCommunity = (selectedCommunity === 'all') || (deviceCommunity === selectedCommunity);
+
+                // Filter by Search Input
+                const matchesQuery = !query || (
+                    (d.mac && d.mac.toLowerCase().includes(query)) ||
+                    (d.ip && d.ip.toLowerCase().includes(query)) ||
+                    (d.hostname && d.hostname.toLowerCase().includes(query)) ||
+                    (d.vlan && d.vlan.toString().includes(query)) ||
+                    (d.os_name && d.os_name.toLowerCase().includes(query)) ||
+                    (d.mac_vendor && d.mac_vendor.toLowerCase().includes(query))
+                );
+
+                return matchesCommunity && matchesQuery;
+            });
+
+            renderTable(filtered);
+        }
+
+        async function viewDevice(mac) {
+            try {
+                const res = await fetch(`/api/devices/${mac}`);
+                if(!res.ok) return alert("Erro ao carregar detalhes do dispositivo.");
+                const d = await res.json();
+
+                document.getElementById('modal-mac-subtitle').innerText = d.mac;
+                document.getElementById('modal-mac').innerText = d.mac;
+                document.getElementById('modal-ip').innerText = d.ip || 'N/A';
+                document.getElementById('modal-hostname').innerText = d.hostname || 'N/A';
+                document.getElementById('modal-mac-vendor').innerText = d.mac_vendor || 'Desconhecido';
+                document.getElementById('modal-device-type').innerText = d.device_type || 'Dispositivo de Rede';
+                document.getElementById('modal-vlan').innerText = `Comunidade VLAN ${d.vlan}`;
+                document.getElementById('modal-port').innerText = d.port || 'N/A';
+                document.getElementById('modal-switch').innerText = d.switch_ip || '172.128.100.8';
+                document.getElementById('modal-os').innerText = d.os_name || 'Desconhecido';
+                document.getElementById('modal-vendor').innerText = d.dhcp_vendor || 'Desconhecido';
+                document.getElementById('modal-first-seen').innerText = d.first_seen || '-';
+                document.getElementById('modal-last-seen').innerText = d.last_seen || '-';
+
+                const alertsList = document.getElementById('modal-alerts-list');
+                alertsList.innerHTML = '';
+                if(!d.alerts || d.alerts.length === 0) {
+                    alertsList.innerHTML = `<p class="text-xs text-slate-500">Nenhum evento adverso registrado para este MAC/IP.</p>`;
+                } else {
+                    d.alerts.forEach(a => {
+                        alertsList.innerHTML += `
+                            <div class="bg-rose-950/40 border border-rose-600/30 rounded p-2 text-xs text-rose-200">
+                                <span class="font-bold text-rose-400">[${a.timestamp}]</span> ${a.message}
+                            </div>
+                        `;
+                    });
+                }
+
+                document.getElementById('device-modal').classList.remove('hidden');
+                document.getElementById('device-modal').classList.add('flex');
+            } catch(e) {
+                alert("Erro ao consultar detalhes do dispositivo.");
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('device-modal').classList.add('hidden');
+            document.getElementById('device-modal').classList.remove('flex');
+        }
+
+        async function deleteDevice(mac) {
+            if(!confirm(`Tem certeza que deseja remover o dispositivo MAC ${mac} do banco de dados?`)) return;
+            
+            try {
+                const res = await fetch(`/api/devices/${mac}`, { method: 'DELETE' });
+                if(res.ok) {
+                    loadData();
+                } else {
+                    alert("Erro ao excluir dispositivo.");
+                }
+            } catch(e) {
+                alert("Erro na requisição de exclusão.");
+            }
+        }
+
+        function renderOSChart(data) {
+            const ctx = document.getElementById('osChart').getContext('2d');
+            const labels = Object.keys(data);
+            const counts = Object.values(data);
+
+            if(osChart) osChart.destroy();
+
+            osChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: counts,
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#6366f1']
+                    }]
+                },
+                options: {
+                    plugins: { legend: { labels: { color: '#cbd5e1' } } },
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        // Connect WebSocket for live updates
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+        ws.onmessage = () => { loadData(); };
+
+        // Initial load
+        loadData();
+    </script>
+</body>
+</html>
