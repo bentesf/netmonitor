@@ -26,21 +26,28 @@ def init_db():
             switch_ip TEXT,
             os_name TEXT DEFAULT 'Desconhecido',
             dhcp_vendor TEXT,
+            open_ports TEXT DEFAULT '[]',
             first_seen TIMESTAMP,
             last_seen TIMESTAMP,
             status TEXT DEFAULT 'online'
         )
     ''')
     
-    # Check and add columns if upgrading existing database
+    # Check and safely add missing columns for existing databases
     cursor.execute("PRAGMA table_info(devices)")
     columns = [row['name'] for row in cursor.fetchall()]
-    if 'hostname' not in columns:
-        cursor.execute("ALTER TABLE devices ADD COLUMN hostname TEXT DEFAULT 'N/A'")
-    if 'mac_vendor' not in columns:
-        cursor.execute("ALTER TABLE devices ADD COLUMN mac_vendor TEXT DEFAULT 'Desconhecido'")
-    if 'device_type' not in columns:
-        cursor.execute("ALTER TABLE devices ADD COLUMN device_type TEXT DEFAULT 'Dispositivo de Rede'")
+    
+    for col_name, col_type in [
+        ('hostname', "TEXT DEFAULT 'N/A'"),
+        ('mac_vendor', "TEXT DEFAULT 'Desconhecido'"),
+        ('device_type', "TEXT DEFAULT 'Dispositivo de Rede'"),
+        ('open_ports', "TEXT DEFAULT '[]'")
+    ]:
+        if col_name not in columns:
+            try:
+                cursor.execute(f"ALTER TABLE devices ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass
         
     # Table for inter-VLAN violation alerts & security events
     cursor.execute('''
@@ -61,7 +68,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-def upsert_device(mac: str, ip: str = None, hostname: str = None, mac_vendor: str = None, device_type: str = None, vlan: int = None, port: str = None, switch_ip: str = None, os_name: str = None, vendor: str = None):
+def upsert_device(mac: str, ip: str = None, hostname: str = None, mac_vendor: str = None, device_type: str = None, vlan: int = None, port: str = None, switch_ip: str = None, os_name: str = None, vendor: str = None, open_ports: str = None):
+    init_db() # Ensures columns exist
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -80,18 +88,19 @@ def upsert_device(mac: str, ip: str = None, hostname: str = None, mac_vendor: st
         new_switch = switch_ip or row['switch_ip']
         new_os = os_name or row['os_name']
         new_dhcp_vendor = vendor or row['dhcp_vendor']
+        new_open_ports = open_ports if open_ports is not None else row['open_ports']
         
         cursor.execute('''
             UPDATE devices 
-            SET ip = ?, hostname = ?, mac_vendor = ?, device_type = ?, vlan = ?, port = ?, switch_ip = ?, os_name = ?, dhcp_vendor = ?, last_seen = ?, status = 'online'
+            SET ip = ?, hostname = ?, mac_vendor = ?, device_type = ?, vlan = ?, port = ?, switch_ip = ?, os_name = ?, dhcp_vendor = ?, open_ports = ?, last_seen = ?, status = 'online'
             WHERE mac = ?
-        ''', (new_ip, new_host, new_mac_vendor, new_device_type, new_vlan, new_port, new_switch, new_os, new_dhcp_vendor, now, mac.lower()))
+        ''', (new_ip, new_host, new_mac_vendor, new_device_type, new_vlan, new_port, new_switch, new_os, new_dhcp_vendor, new_open_ports, now, mac.lower()))
     else:
         # Insert new device
         cursor.execute('''
-            INSERT INTO devices (mac, ip, hostname, mac_vendor, device_type, vlan, port, switch_ip, os_name, dhcp_vendor, first_seen, last_seen, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')
-        ''', (mac.lower(), ip, hostname or 'N/A', mac_vendor or 'Desconhecido', device_type or 'Dispositivo de Rede', vlan or 1, port or 'N/A', switch_ip or 'N/A', os_name or 'Desconhecido', vendor or 'Desconhecido', now, now))
+            INSERT INTO devices (mac, ip, hostname, mac_vendor, device_type, vlan, port, switch_ip, os_name, dhcp_vendor, open_ports, first_seen, last_seen, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')
+        ''', (mac.lower(), ip, hostname or 'N/A', mac_vendor or 'Desconhecido', device_type or 'Dispositivo de Rede', vlan or 1, port or 'N/A', switch_ip or 'N/A', os_name or 'Desconhecido', vendor or 'Desconhecido', open_ports or '[]', now, now))
         
     conn.commit()
     conn.close()
@@ -108,6 +117,7 @@ def delete_device(mac: str) -> bool:
 
 def get_device_by_mac(mac: str):
     """Retrieves full detail of a specific device along with its alert history"""
+    init_db()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM devices WHERE mac = ?", (mac.lower(),))
@@ -127,6 +137,16 @@ def get_device_by_mac(mac: str):
     conn.close()
     return dev_dict
 
+def get_device_by_ip(ip: str):
+    """Retrieves a device record by IP address"""
+    init_db()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM devices WHERE ip = ?", (ip,))
+    device = cursor.fetchone()
+    conn.close()
+    return dict(device) if device else None
+
 def log_alert(mac: str, src_ip: str, src_vlan: int, dst_ip: str, dst_vlan: int, message: str, severity: str = "HIGH"):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -141,6 +161,7 @@ def log_alert(mac: str, src_ip: str, src_vlan: int, dst_ip: str, dst_vlan: int, 
     conn.close()
 
 def get_devices():
+    init_db()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM devices ORDER BY last_seen DESC")
@@ -149,6 +170,7 @@ def get_devices():
     return [dict(row) for row in rows]
 
 def get_alerts():
+    init_db()
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM alerts ORDER BY timestamp DESC LIMIT 50")
@@ -157,6 +179,7 @@ def get_alerts():
     return [dict(row) for row in rows]
 
 def get_stats():
+    init_db()
     conn = get_db_connection()
     cursor = conn.cursor()
     

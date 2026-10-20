@@ -8,11 +8,12 @@ from pydantic import BaseModel
 
 from app.database import (
     init_db, get_devices, get_alerts, get_stats, 
-    get_device_by_mac, delete_device
+    get_device_by_mac, delete_device, get_device_by_ip
 )
 from app.collectors.syslog_server import start_syslog_server
 from app.collectors.snmp_poller import RealSNMPPoller
 from app.collectors.network_scanner import LocalNetworkScanner
+from app.collectors.nmap_scanner import NmapDeviceScanner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("NetMonitorMain")
@@ -59,9 +60,9 @@ async def startup_event():
     
     # 3. Start local network ARP & subnet scanner collector
     scanner = LocalNetworkScanner()
-    asyncio.create_task(scanner.run_periodic_scan(interval_seconds=30))
+    asyncio.create_task(scanner.run_periodic_scan(interval_seconds=45))
     
-    logger.info("NetMonitor inicializado e conectando aos coletores de rede (SNMP, Syslog e Scanner ARP).")
+    logger.info("NetMonitor inicializado e conectando aos coletores de rede (SNMP, Syslog, Scanner ARP e Nmap).")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_dashboard():
@@ -78,6 +79,13 @@ async def api_get_device_detail(mac: str):
     if not dev:
         raise HTTPException(status_code=404, detail="Dispositivo não encontrado")
     return dev
+
+@app.post("/api/devices/{ip}/scan")
+async def api_scan_device(ip: str):
+    """Executa varredura de portas e serviços Nmap no IP informado"""
+    result = await NmapDeviceScanner.scan_device(ip)
+    await manager.broadcast({"type": "NMAP_SCAN_COMPLETED", "ip": ip, "open_ports_count": result["open_ports_count"]})
+    return result
 
 @app.delete("/api/devices/{mac}")
 async def api_delete_device(mac: str):

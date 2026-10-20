@@ -29,7 +29,7 @@
             <i class="fa-solid fa-network-wired text-brand-500 text-2xl"></i>
             <div>
                 <h1 class="text-xl font-bold text-white tracking-wide">NetMonitor Pro</h1>
-                <p class="text-xs text-slate-400">Plataforma de Visibilidade de Rede & Segurança Inter-VLAN</p>
+                <p class="text-xs text-slate-400">Plataforma de Visibilidade de Rede, Nmap & Segurança Inter-VLAN</p>
             </div>
         </div>
         <div class="flex items-center space-x-4">
@@ -107,7 +107,7 @@
                     <p class="text-xs text-slate-400">Filtragem por Comunidade / VLAN e busca por IP, MAC ou Hostname</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                    <!-- COMBOBOX / SELETOR DE COMUNIDADE (VLAN) -->
+                    <!-- COMBOBOX SELETOR DE COMUNIDADE -->
                     <div class="flex items-center space-x-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5">
                         <i class="fa-solid fa-layer-group text-purple-400 text-xs"></i>
                         <label for="community-select" class="text-xs text-slate-400 font-medium whitespace-nowrap">Comunidade / VLAN:</label>
@@ -149,21 +149,29 @@
         </div>
     </div>
 
-    <!-- DEVICE DETAILS MODAL (ALL COLLECTED FIELDS) -->
+    <!-- DEVICE DETAILS & NMAP MODAL -->
     <div id="device-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
         <div class="bg-cardbg border border-slate-700 rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-6 relative max-h-[90vh] overflow-y-auto">
             <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white transition text-lg">
                 <i class="fa-solid fa-xmark"></i>
             </button>
             
-            <div class="flex items-center space-x-3 border-b border-slate-700/80 pb-4">
-                <div class="p-3 bg-brand-500/10 text-brand-400 rounded-lg">
-                    <i class="fa-solid fa-desktop text-2xl"></i>
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-700/80 pb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="p-3 bg-brand-500/10 text-brand-400 rounded-lg">
+                        <i class="fa-solid fa-desktop text-2xl"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-white">Ficha Técnica Completa do Dispositivo</h3>
+                        <p id="modal-mac-subtitle" class="text-xs font-mono text-brand-400">00:00:00:00:00:00</p>
+                    </div>
                 </div>
-                <div>
-                    <h3 class="text-lg font-bold text-white">Ficha Técnica Completa do Dispositivo</h3>
-                    <p id="modal-mac-subtitle" class="text-xs font-mono text-brand-400">00:00:00:00:00:00</p>
-                </div>
+
+                <!-- BUTTON TO TRIGGER NMAP SCAN -->
+                <button id="nmap-btn" onclick="runNmapScan()" 
+                        class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition shadow">
+                    <i class="fa-solid fa-crosshairs"></i> Inspecionar Portas (Nmap)
+                </button>
             </div>
 
             <!-- Grid with ALL collected fields -->
@@ -221,6 +229,25 @@
                 </div>
             </div>
 
+            <!-- NMAP OPEN PORTS SECTION -->
+            <div class="bg-slate-900/80 border border-slate-700/60 rounded-lg p-4 space-y-3">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-satellite-dish"></i> Auditoria Nmap: Portas e Serviços Abertos
+                    </h4>
+                    <span id="nmap-engine-label" class="text-[11px] text-slate-500 font-mono">Pronto para escanear</span>
+                </div>
+                
+                <div id="nmap-loading" class="hidden text-center py-4 space-y-2">
+                    <i class="fa-solid fa-circle-notch fa-spin text-indigo-500 text-2xl"></i>
+                    <p class="text-xs text-indigo-300">Varrendo portas e identificando serviços no host...</p>
+                </div>
+
+                <div id="nmap-results" class="space-y-2">
+                    <p class="text-xs text-slate-500">Clique em "Inspecionar Portas (Nmap)" acima para verificar portas abertas e serviços ativos neste IP.</p>
+                </div>
+            </div>
+
             <!-- Device Security Alerts -->
             <div>
                 <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Histórico de Eventos & Alertas de Segurança Inter-VLAN</h4>
@@ -240,6 +267,7 @@
     <script>
         let osChart = null;
         let allDevices = [];
+        let currentModalDeviceIp = null;
 
         async function loadData() {
             // Load stats
@@ -288,7 +316,6 @@
             const select = document.getElementById('community-select');
             const currentSelected = select.value;
             
-            // Map unique VLANs / Communities and count devices per community
             const communityCounts = {};
             devices.forEach(d => {
                 const vlanKey = d.vlan ? `Comunidade VLAN ${d.vlan}` : 'Sem Comunidade';
@@ -329,7 +356,7 @@
                             </td>
                             <td class="py-3 px-4 text-center">
                                 <div class="flex items-center justify-center space-x-2">
-                                    <button onclick="viewDevice('${d.mac}')" title="Visualizar Detalhes" class="p-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 rounded-lg transition">
+                                    <button onclick="viewDevice('${d.mac}')" title="Visualizar Detalhes & Nmap" class="p-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 rounded-lg transition">
                                         <i class="fa-solid fa-eye"></i>
                                     </button>
                                     <button onclick="deleteDevice('${d.mac}')" title="Remover Dispositivo" class="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition">
@@ -348,11 +375,9 @@
             const selectedCommunity = document.getElementById('community-select').value;
 
             const filtered = allDevices.filter(d => {
-                // Filter by Community / VLAN Combo Box
                 const deviceCommunity = d.vlan ? `Comunidade VLAN ${d.vlan}` : 'Sem Comunidade';
                 const matchesCommunity = (selectedCommunity === 'all') || (deviceCommunity === selectedCommunity);
 
-                // Filter by Search Input
                 const matchesQuery = !query || (
                     (d.mac && d.mac.toLowerCase().includes(query)) ||
                     (d.ip && d.ip.toLowerCase().includes(query)) ||
@@ -374,6 +399,8 @@
                 if(!res.ok) return alert("Erro ao carregar detalhes do dispositivo.");
                 const d = await res.json();
 
+                currentModalDeviceIp = d.ip;
+
                 document.getElementById('modal-mac-subtitle').innerText = d.mac;
                 document.getElementById('modal-mac').innerText = d.mac;
                 document.getElementById('modal-ip').innerText = d.ip || 'N/A';
@@ -387,6 +414,9 @@
                 document.getElementById('modal-vendor').innerText = d.dhcp_vendor || 'Desconhecido';
                 document.getElementById('modal-first-seen').innerText = d.first_seen || '-';
                 document.getElementById('modal-last-seen').innerText = d.last_seen || '-';
+
+                // Render existing open ports if previously scanned
+                renderOpenPorts(d.open_ports);
 
                 const alertsList = document.getElementById('modal-alerts-list');
                 alertsList.innerHTML = '';
@@ -407,6 +437,86 @@
             } catch(e) {
                 alert("Erro ao consultar detalhes do dispositivo.");
             }
+        }
+
+        async function runNmapScan() {
+            if(!currentModalDeviceIp || currentModalDeviceIp === 'Pending') {
+                return alert("O dispositivo não possui um IP válido para auditoria Nmap.");
+            }
+
+            const btn = document.getElementById('nmap-btn');
+            const loading = document.getElementById('nmap-loading');
+            const results = document.getElementById('nmap-results');
+            const engineLabel = document.getElementById('nmap-engine-label');
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            loading.classList.remove('hidden');
+            results.classList.add('hidden');
+            engineLabel.innerText = "Escaneando...";
+
+            try {
+                const res = await fetch(`/api/devices/${currentModalDeviceIp}/scan`, { method: 'POST' });
+                if(!res.ok) throw new Error("Erro na requisição Nmap.");
+                const data = await res.json();
+
+                engineLabel.innerText = `Engine: ${data.scan_engine}`;
+                if(data.refined_os) {
+                    document.getElementById('modal-os').innerText = data.refined_os;
+                }
+
+                renderOpenPorts(JSON.stringify(data.open_ports));
+            } catch(e) {
+                alert("Falha ao executar inspeção Nmap.");
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+                loading.classList.add('hidden');
+                results.classList.remove('hidden');
+            }
+        }
+
+        function renderOpenPorts(portsJson) {
+            const resultsDiv = document.getElementById('nmap-results');
+            resultsDiv.innerHTML = '';
+
+            let ports = [];
+            try {
+                ports = typeof portsJson === 'string' ? JSON.parse(portsJson) : portsJson;
+            } catch(e) {}
+
+            if(!ports || ports.length === 0) {
+                resultsDiv.innerHTML = `<p class="text-xs text-slate-400">Nenhuma porta aberta detectada no scanner até o momento. Clique em "Inspecionar Portas (Nmap)" para iniciar uma varredura.</p>`;
+                return;
+            }
+
+            let html = `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-700 text-slate-400 uppercase">
+                                <th class="py-2 px-3">Porta</th>
+                                <th class="py-2 px-3">Serviço</th>
+                                <th class="py-2 px-3">Descrição / Status</th>
+                                <th class="py-2 px-3">Banner / Versão</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800">
+            `;
+
+            ports.forEach(p => {
+                html += `
+                    <tr class="hover:bg-slate-800/50">
+                        <td class="py-2 px-3 font-mono font-bold text-indigo-400">${p.port}/${p.protocol.toUpperCase()}</td>
+                        <td class="py-2 px-3 font-semibold text-emerald-400">${p.service}</td>
+                        <td class="py-2 px-3 text-slate-300">${p.description}</td>
+                        <td class="py-2 px-3 font-mono text-[11px] text-slate-400">${p.banner || 'Aberta'}</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table></div>`;
+            resultsDiv.innerHTML = html;
         }
 
         function closeModal() {
